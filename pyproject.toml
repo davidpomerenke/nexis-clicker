@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "nexis-scraper"
+version = "0.1.0"
+description = ""
+authors = ["David Pomerenke <46022183+davidpomerenke@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+dateparser = "^1.2.0"
+pandas = "^2.2.0"
+python-dotenv = "^1.0.1"
+munch = "^4.0.0"
+striprtf = "^0.0.26"
+playwright = "^1.41.2"
+pyarrow = "^15.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
