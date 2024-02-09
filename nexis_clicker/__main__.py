@@ -20,13 +20,13 @@ load_dotenv()
 # config:
 cookie_path = Path("cookies.json")
 url_path = Path("url.txt")
-query = """(climate) NEAR/10 (protest* OR demo OR rally OR campaign OR "social movement" OR occup* OR strike OR petition OR "hate crime" OR riot OR unrest OR uprising OR boycott OR riot OR activis* OR resistance OR mobilization OR "citizens' initiative" OR march OR parade OR picket OR block* OR sit-in OR vigil OR "hunger strike" OR rebel* OR "civil disobedience")"""
-data_path = Path("data")
+query = """(climate) NEAR/10 (protest* OR demo OR rally OR campaign OR "social movement" OR occup* OR strike OR petition OR riot OR unrest OR uprising OR boycott OR riot OR activis* OR resistance OR mobilization OR "citizens' initiative" OR march OR parade OR picket OR block* OR sit-in OR vigil OR "hunger strike" OR rebel* OR "civil disobedience")"""
+data_path = Path("data") / "climate-protests"
 data_path.mkdir(parents=True, exist_ok=True)
 
 
 async def main():
-    await clickthrough(query, headless=False, backward=False)
+    await clickthrough(query, headless=True, backward=False)
 
 
 def process_downloads():
@@ -163,8 +163,7 @@ async def search_by_month(
         await click(
             page, 'button[data-filtertype="datestr-news"][data-action="expand"]'
         )
-    except Exception as e:
-        print(e)
+    except Exception:
         pass
     await page.wait_for_timeout(3_000)
     await page.fill('input[class="min-val"]', f"01/{month}/{year}")
@@ -295,6 +294,9 @@ def process(path: Path):
     texts = unpack(path)
     for fn, text in texts:
         item = parse(text)
+        if not item.date:
+            print(f"No date for {fn}, {item.title}")
+            continue
         datestr = date.strftime(dateparser.parse(item.date), "%Y-%m-%d")
         jpath = data_path / "json" / datestr / f"{fn}.json"
         jpath.parent.mkdir(parents=True, exist_ok=True)
