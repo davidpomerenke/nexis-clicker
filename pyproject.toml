@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "nexis-scraper"
+name = "nexis-clicker"
 version = "0.1.0"
 description = ""
 authors = ["David Pomerenke <46022183+davidpomerenke@users.noreply.github.com>"]

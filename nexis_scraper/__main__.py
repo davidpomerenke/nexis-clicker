@@ -26,7 +26,7 @@ data_path.mkdir(parents=True, exist_ok=True)
 
 
 async def main():
-    await scrape(query, headless=False, backward=False)
+    await clickthrough(query, headless=False, backward=False)
 
 
 def process_downloads():
@@ -34,7 +34,7 @@ def process_downloads():
         process(path)
 
 
-async def scrape(
+async def clickthrough(
     query=None, headless=True, start=2018, end=2023, backward=False
 ) -> pd.DataFrame | None:
     try:
