@@ -1,4 +1,6 @@
+data/
 cookies.json
+url.txt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
