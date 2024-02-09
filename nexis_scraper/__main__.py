@@ -39,6 +39,7 @@ async def scrape(
     try:
         page, browser, context = await setup(headless=headless)
         page, browser, context = await login(page, browser, context)
+        await page.wait_for_timeout(60_000)
         page, browser, context = await search(
             query, page, browser, context, backward=backward
         )
@@ -89,15 +90,18 @@ async def login(
     page: Page, browser: Browser, context: BrowserContext
 ) -> tuple[Page, Browser, BrowserContext]:
     if not cookie_path.exists():
-        await page.goto(environ["SITE"])
-        await page.fill('input[id="user"]', environ["USER"])
-        await page.fill('input[id="pass"]', environ["PASSWORD"])
+        await page.goto(environ["NEXIS_URL"])
+        await page.wait_for_timeout(2_000)
+        await page.fill('input[id="user"]', environ["NEXIS_USER"])
+        await page.wait_for_timeout(2_000)
+        await page.fill('input[id="pass"]', environ["NEXIS_PASSWORD"])
+        await page.wait_for_timeout(2_000)
         await click(page, 'input[type="submit"]')
-        await page.wait_for_timeout(5_000)
+        await page.wait_for_timeout(20_000)
         cookies = await context.cookies()
         cookie_path.write_text(json.dumps(cookies))
     else:
-        await page.goto("https://advance-lexis-com.mu.idm.oclc.org/")
+        await page.goto(environ["NEXIS_URL"])
     return page, browser, context
 
 
@@ -287,4 +291,3 @@ def process(path: Path):
 
 if __name__ == "__main__":
     asyncio.run(main())
-
