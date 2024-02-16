@@ -3,13 +3,14 @@ import json
 import re
 import shutil
 from calendar import monthrange
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from os import environ
 from pathlib import Path
 from zipfile import ZipFile
 
 import dateparser
 import pandas as pd
+from tqdm.auto import tqdm
 from dotenv import load_dotenv
 from munch import Munch
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
@@ -19,23 +20,22 @@ load_dotenv()
 
 # config:
 cookie_path = Path("cookies.json")
-url_path = Path("url.txt")
 query = """(climate) NEAR/10 (protest* OR demo OR rally OR campaign OR "social movement" OR occup* OR strike OR petition OR riot OR unrest OR uprising OR boycott OR riot OR activis* OR resistance OR mobilization OR "citizens' initiative" OR march OR parade OR picket OR block* OR sit-in OR vigil OR "hunger strike" OR rebel* OR "civil disobedience")"""
 data_path = Path("data") / "climate-protests"
 data_path.mkdir(parents=True, exist_ok=True)
 
 
 async def main():
-    await clickthrough(query, headless=True, backward=False)
+    await clickthrough(query, headless=False, backward=False)
 
 
 def process_downloads():
     for path in sorted((data_path / "zip").glob("**/*.zip")):
-        process(path)
+        process_dowload(path)
 
 
 async def clickthrough(
-    query=None, headless=True, start=2018, end=2023, backward=False
+    query=None, headless=True, start=2008, end=2024, backward=False
 ) -> pd.DataFrame | None:
     try:
         page, browser, context = await setup(headless=headless)
@@ -45,21 +45,25 @@ async def clickthrough(
         )
         cookies = await context.cookies()
         cookie_path.write_text(json.dumps(cookies))
-        for year in range(start, end + 1):
-            for month in range(1, 13):
-                res = await search_by_month(
-                    year, month, page, browser, context, backward=backward
-                )
-                if res is None:
-                    continue
-                page, browser, context = res
-                page, browser, context = await download(
-                    year, month, page, browser, context, backward=backward
-                )
-        await context.add_cookies(json.loads(cookie_path.read_text()))
+        months_and_years = [
+            (month, year) for year in range(start, end) for month in range(1, 13)
+        ]
+        q = tqdm(months_and_years, miniters=1, mininterval=0.1)
+        for month, year in q:
+            q.set_description(f"{year}-{month:02d}")
+            res = await search_by_month(
+                year, month, page, browser, context, backward=backward
+            )
+            if res is None:
+                continue
+            page, browser, context = res
+            page, browser, context = await download(
+                year, month, page, browser, context, backward=backward, q=q
+            )
     except Exception as e:
         print(e)
-        await page.wait_for_timeout(60_000)
+        # wait here for a longer time for debugging
+        await page.wait_for_timeout(5_000)
     finally:
         await browser.close()
 
@@ -72,8 +76,6 @@ async def setup(headless=True) -> tuple[Page, Browser, BrowserContext]:
         timeout=10_000, downloads_path=path, headless=headless
     )
     context = await browser.new_context()
-    if cookie_path.exists():
-        await context.add_cookies(json.loads(cookie_path.read_text()))
     page = await context.new_page()
     return page, browser, context
 
@@ -88,14 +90,21 @@ async def click(page: Page, selector: str, n: int = 0, timeout=5_000) -> Page:
 async def login(
     page: Page, browser: Browser, context: BrowserContext
 ) -> tuple[Page, Browser, BrowserContext]:
-    if not cookie_path.exists():
-        await page.goto(environ["NEXIS_URL"])
-        await page.fill('input[id="user"]', environ["NEXIS_USER"])
-        await page.fill('input[id="pass"]', environ["NEXIS_PASSWORD"])
-        await click(page, 'input[type="submit"]')
-        await page.wait_for_timeout(20_000)
-        cookies = await context.cookies()
-        cookie_path.write_text(json.dumps(cookies))
+    if cookie_path.exists():
+        last_mod = datetime.fromtimestamp(cookie_path.stat().st_mtime)
+        time_passed = datetime.now() - last_mod
+        if time_passed < timedelta(hours=1):
+            await context.add_cookies(json.loads(cookie_path.read_text()))
+            return page, browser, context
+    print("Logging in ...")
+    await page.goto(environ["NEXIS_URL"])
+    await page.wait_for_timeout(5_000)
+    await page.fill('input[id="user"]', environ["NEXIS_USER"])
+    await page.fill('input[id="pass"]', environ["NEXIS_PASSWORD"])
+    await click(page, 'input[type="submit"]')
+    await page.wait_for_timeout(20_000)
+    cookies = await context.cookies()
+    cookie_path.write_text(json.dumps(cookies))
     return page, browser, context
 
 
@@ -106,34 +115,28 @@ async def search(
     context: BrowserContext,
     backward: bool = False,
 ) -> tuple[Page, Browser, BrowserContext]:
-    if not url_path.exists():
-        await page.goto(environ["NEXIS_URL"])
-        await page.fill("lng-expanding-textarea", query)
-        await click(page, "lng-search-button")
-        try:
-            await click(page, 'span[class="filter-text"]', timeout=15_000)
-            await page.wait_for_timeout(5_000)
-        except Exception:
-            pass
-        await click(page, 'button[data-filtertype="source"]')
-        await page.wait_for_timeout(1_000)
-        await click(page, 'button[data-action="moreless"]')
+    print("Searching", end=" ... ")
+    await page.goto(environ["NEXIS_URL"])
+    await page.fill("lng-expanding-textarea", query)
+    await click(page, "lng-search-button")
+    try:
+        await click(page, 'span[class="filter-text"]', timeout=15_000)
         await page.wait_for_timeout(5_000)
-        el = await page.query_selector(
-            'input[data-value="Agence France Presse - English"]'
-        )
-        await el.dispatch_event("click")
-        await page.wait_for_timeout(5_000)
-        await click(page, 'span[id="sortbymenulabel"]')
-        await page.wait_for_timeout(1_000)
-        order = "descending" if backward else "ascending"
-        await click(page, f'button[data-value="date{order}"]')
-        await page.wait_for_timeout(5_000)
-        url_path.write_text(page.url)
-    else:
-        url = url_path.read_text()
-        await page.goto(url)
-        await page.wait_for_timeout(5_000)
+    except Exception:
+        pass
+    await click(page, 'button[data-filtertype="source"]')
+    await page.wait_for_timeout(1_000)
+    await click(page, 'button[data-action="moreless"]')
+    await page.wait_for_timeout(5_000)
+    el = await page.query_selector('input[data-value="Agence France Presse - English"]')
+    await el.dispatch_event("click")
+    await page.wait_for_timeout(5_000)
+    await click(page, 'span[id="sortbymenulabel"]')
+    await page.wait_for_timeout(1_000)
+    order = "descending" if backward else "ascending"
+    await click(page, f'button[data-value="date{order}"]')
+    await page.wait_for_timeout(5_000)
+    print("✅")
     return page, browser, context
 
 
@@ -187,12 +190,18 @@ async def visit_permalink(
     return page, browser, context
 
 
+def _print(q, *args, end="\n"):
+    text = " ".join([str(a) for a in args])
+    q.write(text, end=end)
+
+
 async def download(
     year,
     month,
     page: Page,
     browser: Browser,
     context: BrowserContext,
+    q: tqdm,
     n: int = 1000,
     backward: bool = False,
 ) -> tuple[Page, Browser, BrowserContext]:
@@ -215,7 +224,13 @@ async def download(
         dest_path.parent.mkdir(parents=True, exist_ok=True)
         if dest_path.exists():
             continue
-        print(datetime.now().strftime("%H:%M:%S"), "Downloading", dest_path)
+        _print(
+            q,
+            datetime.now().strftime("%H:%M:%S"),
+            "Downloading",
+            dest_path,
+            end=" ... ",
+        )
         el = await page.query_selector('span[class="icon la-Download"]')
         await el.dispatch_event("click")
         await page.wait_for_timeout(2_000)
@@ -243,8 +258,8 @@ async def download(
         download = await download_info.value
         tmp_path = await download.path()
         shutil.move(tmp_path, dest_path)
-        print(f"Downloaded {dest_path}")
-        process(dest_path)
+        _print(q, "✅")
+        process_dowload(dest_path)
         # await page.wait_for_timeout(120_000)
         await page.wait_for_timeout(5_000)
     return page, browser, context
@@ -271,12 +286,11 @@ def parse(plaintext: str) -> dict:
     location = re.findall(r"Dateline:\s?(.+),[^,]+\n", rest)
     location = location[0] if len(location) > 0 else None
     if ", " in location:
-        location, country = location.split(", ")
+        location, country = location.rsplit(", ", 1)
     else:
         country = None
     meta, rest = rest.split("Body", 1)
     if "Graphic" in rest:
-        print("Graph")
         text, _ = rest.split("Graphic", 1)
     else:
         text, _ = rest.split("Load-Date", 1)
@@ -290,7 +304,7 @@ def parse(plaintext: str) -> dict:
     )
 
 
-def process(path: Path):
+def process_dowload(path: Path):
     texts = unpack(path)
     for fn, text in texts:
         item = parse(text)
