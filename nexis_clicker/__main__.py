@@ -181,15 +181,6 @@ async def search_by_month(
     return page, browser, context
 
 
-async def visit_permalink(
-    permalink: str, page: Page, browser: Browser, context: BrowserContext
-) -> tuple[Page, Browser, BrowserContext]:
-    await page.goto(permalink)
-    await click(page, 'input[data-action="viewlink"]')
-    await page.wait_for_timeout(10_000)
-    return page, browser, context
-
-
 def _print(q, *args, end="\n"):
     text = " ".join([str(a) for a in args])
     q.write(text, end=end)
