@@ -286,6 +286,7 @@ def parse(plaintext: str) -> dict:
     # parse metadata and text from plaintext
     # this is partially specific to Agence France Presse's format,
     # so you may need to adjust this
+    # also consider using https://github.com/JBGruber/LexisNexisTools for this part ❤️
     title, rest = plaintext.split("\n", 1)
     feed, rest = rest.split("\n", 1)
     date, rest = rest.split("\n", 1)
