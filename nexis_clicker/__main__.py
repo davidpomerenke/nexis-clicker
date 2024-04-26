@@ -26,23 +26,36 @@ data_path.mkdir(parents=True, exist_ok=True)
 
 
 def process_downloads():
-    # this function is not part of the main workflow
-    # you can run it after downloading everything to make sure all downloads are processed
-    # (some downloads might not be processed when the script is interrupted)
+    """This function is not part of the main workflow
+    you can run it after downloading everything to make sure all downloads are processed
+    (some downloads might not be processed when the script is interrupted)
+    """
     for path in sorted((data_path / "zip").glob("**/*.zip")):
-        process_dowload(path)
+        process_download(path)
 
 
 async def clickthrough(
     query=None, headless=True, start=2008, end=2024, backward=False
 ) -> pd.DataFrame | None:
-    # the main workflow
+    """The main workflow function
+
+    Args:
+        query (_type_, optional): _description_. Defaults to None.
+        headless (bool, optional): _description_. Defaults to True.
+        start (int, optional): _description_. Defaults to 2008.
+        end (int, optional): _description_. Defaults to 2024.
+        backward (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        pd.DataFrame | None: _description_
+    """
     try:
         page, browser, context = await setup(headless=headless)  # open the browser
         page, browser, context = await login(page, browser, context)  # login
         page, browser, context = await search(
             query, page, browser, context, backward=backward
         )  # search and sort by date
+
         # now iterate through the results by month
         # (this is because only 1000 results can be downloaded at once,
         # so we need to split up the results in some way)
@@ -50,18 +63,23 @@ async def clickthrough(
             (month, year) for year in range(start, end) for month in range(1, 13)
         ]
         q = tqdm(months_and_years, miniters=1, mininterval=0.1)
+        
         for month, year in q:
             q.set_description(f"{year}-{month:02d}")
+            
+            # narrow down the results to the given month
             res = await search_by_month(
                 year, month, page, browser, context, backward=backward
-            )  # narrow down the results to the given month
-            # continue if there are no results or the results are already downloaded:
+            )  
             if res is None:
+                # continue if there are no results or the results are already downloaded
                 continue
             page, browser, context = res
+            
+            # trigger the download and the conversion of the results
             page, browser, context = await download(
                 year, month, page, browser, context, backward=backward, q=q
-            )  # trigger the download and the conversion of the results
+            )  
     except Exception as e:
         print(e)
         # wait here for a longer time for debugging
@@ -71,7 +89,14 @@ async def clickthrough(
 
 
 async def setup(headless=True) -> tuple[Page, Browser, BrowserContext]:
-    # setup the browser
+    """Setup the browser
+
+    Args:
+        headless (bool, optional): _description_. Defaults to True.
+
+    Returns:
+        tuple[Page, Browser, BrowserContext]: _description_
+    """
     path = data_path / "tmp"
     path.mkdir(parents=True, exist_ok=True)
     p = await async_playwright().start()
@@ -84,7 +109,17 @@ async def setup(headless=True) -> tuple[Page, Browser, BrowserContext]:
 
 
 async def click(page: Page, selector: str, n: int = 0, timeout=5_000) -> Page:
-    # wait and click once available
+    """Wait and click once available
+
+    Args:
+        page (Page): _description_
+        selector (str): _description_
+        n (int, optional): _description_. Defaults to 0.
+        timeout (_type_, optional): _description_. Defaults to 5_000.
+
+    Returns:
+        Page: _description_
+    """
     await page.wait_for_selector(selector, timeout=timeout)
     els = await page.query_selector_all(selector)
     await els[n].click()
@@ -94,9 +129,18 @@ async def click(page: Page, selector: str, n: int = 0, timeout=5_000) -> Page:
 async def login(
     page: Page, browser: Browser, context: BrowserContext
 ) -> tuple[Page, Browser, BrowserContext]:
-    # login to nexis
-    # ⚠️ the login is specific to your institution, so you may need to adjust this
-    # if logged in within the previous hour, reuse that session
+    """login to nexis
+    ⚠️ the login is specific to your institution, so you may need to adjust this
+    if logged in within the previous hour, reuse that session
+
+    Args:
+        page (Page): _description_
+        browser (Browser): _description_
+        context (BrowserContext): _description_
+
+    Returns:
+        tuple[Page, Browser, BrowserContext]: _description_
+    """
     if cookie_path.exists():
         last_mod = datetime.fromtimestamp(cookie_path.stat().st_mtime)
         time_passed = datetime.now() - last_mod
@@ -122,7 +166,18 @@ async def search(
     context: BrowserContext,
     backward: bool = False,
 ) -> tuple[Page, Browser, BrowserContext]:
-    # search and filter the results
+    """search and filter the results
+
+    Args:
+        query (str): _description_
+        page (Page): _description_
+        browser (Browser): _description_
+        context (BrowserContext): _description_
+        backward (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        tuple[Page, Browser, BrowserContext]: _description_
+    """
     print("Searching", end=" ... ")
     await page.goto(environ["NEXIS_URL"])
     await page.fill("lng-expanding-textarea", query)
@@ -156,7 +211,19 @@ async def search_by_month(
     context: BrowserContext,
     backward: bool = False,
 ) -> tuple[Page, Browser, BrowserContext] | None:
-    # narrow down the search results to a specific month
+    """Narrow down the search results to a specific month
+
+    Args:
+        year (int): _description_
+        month (int): _description_
+        page (Page): _description_
+        browser (Browser): _description_
+        context (BrowserContext): _description_
+        backward (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        tuple[Page, Browser, BrowserContext] | None: _description_
+    """
     existing_files = list((data_path / "zip").glob(f"{year}-{month:02d}/*.zip"))
     if any([not a.name.endswith("00.zip") for a in existing_files]):
         # then we already have all files for this month
@@ -192,7 +259,12 @@ async def search_by_month(
 
 
 def _print(q, *args, end="\n"):
-    # print while a tqdm progress bar is running
+    """print while a tqdm progress bar is running
+
+    Args:
+        q (_type_): _description_
+        end (str, optional): _description_. Defaults to "\n".
+    """
     text = " ".join([str(a) for a in args])
     q.write(text, end=end)
 
@@ -207,7 +279,21 @@ async def download(
     n: int = 1000,
     backward: bool = False,
 ) -> tuple[Page, Browser, BrowserContext]:
-    # navigate through the download dialog and trigger the download
+    """Navigate through the download dialog and trigger the download
+
+    Args:
+        year (_type_): _description_
+        month (_type_): _description_
+        page (Page): _description_
+        browser (Browser): _description_
+        context (BrowserContext): _description_
+        q (tqdm): _description_
+        n (int, optional): _description_. Defaults to 1000.
+        backward (bool, optional): _description_. Defaults to False.
+
+    Returns:
+        tuple[Page, Browser, BrowserContext]: _description_
+    """
     el = await page.query_selector('header[class="resultsHeader"]')
     n_results = int(
         re.search(r"\(((\d|\.)+)\)", await el.inner_text()).group(1).replace(".", "")
@@ -262,14 +348,21 @@ async def download(
         tmp_path = await download.path()
         shutil.move(tmp_path, dest_path)
         _print(q, "✅")
-        process_dowload(dest_path)
+        process_download(dest_path)
         # await page.wait_for_timeout(120_000)
         await page.wait_for_timeout(5_000)
     return page, browser, context
 
 
 def unpack(path: Path) -> list[tuple[str, str]]:
-    # unpack zip to rtfs and convert to plaintexts
+    """Unpack zip to rtfs and convert to plaintexts
+
+    Args:
+        path (Path): _description_
+
+    Returns:
+        list[tuple[str, str]]: _description_
+    """
     with ZipFile(path) as zipObj:
         plaintexts = []
         for file in zipObj.filelist:
@@ -283,10 +376,17 @@ def unpack(path: Path) -> list[tuple[str, str]]:
 
 
 def parse(plaintext: str) -> dict:
-    # parse metadata and text from plaintext
-    # this is partially specific to Agence France Presse's format,
-    # so you may need to adjust this
-    # also consider using https://github.com/JBGruber/LexisNexisTools for this part ❤️
+    """Parse metadata and text from plaintext
+    this is partially specific to Agence France Presse's format,
+    so you may need to adjust this
+    also consider using https://github.com/JBGruber/LexisNexisTools for this part ❤️
+
+    Args:
+        plaintext (str): _description_
+
+    Returns:
+        dict: _description_
+    """
     title, rest = plaintext.split("\n", 1)
     feed, rest = rest.split("\n", 1)
     date, rest = rest.split("\n", 1)
@@ -312,8 +412,12 @@ def parse(plaintext: str) -> dict:
     )
 
 
-def process_dowload(path: Path):
-    # unpack and parse and store in the right directory and filename
+def process_download(path: Path):
+    """Unpack and parse and store in the right directory and filename
+
+    Args:
+        path (Path): _description_
+    """
     texts = unpack(path)
     for fn, text in texts:
         item = parse(text)
