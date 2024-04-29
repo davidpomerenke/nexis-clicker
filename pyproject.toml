@@ -12,9 +12,9 @@ pandas = "^2.2.0"
 python-dotenv = "^1.0.1"
 munch = "^4.0.0"
 striprtf = "^0.0.26"
-playwright = "^1.41.2"
 pyarrow = "^15.0.0"
 tqdm = "^4.66.2"
+playwright = "^1.43.0"
 
 
 [tool.poetry.group.dev.dependencies]
