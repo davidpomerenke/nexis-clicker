@@ -35,7 +35,7 @@ def process_downloads():
 
 
 async def clickthrough(
-    query=None, headless=True, start=2008, end=2024, backward=False
+    query=None, headless=True, start=2018, end=2024, backward=False
 ) -> pd.DataFrame | None:
     """The main workflow function
 
@@ -431,4 +431,4 @@ def process_download(path: Path):
 
 
 if __name__ == "__main__":
-    asyncio.run(clickthrough(query, headless=False, backward=False))
+    asyncio.run(clickthrough(query, headless=True, backward=False))
